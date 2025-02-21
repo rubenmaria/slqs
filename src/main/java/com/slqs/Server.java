@@ -1,4 +1,4 @@
-package slqs;
+package com.slqs;
 
 import java.net.ServerSocket;
 import java.net.Socket;

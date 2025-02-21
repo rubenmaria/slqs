@@ -1,4 +1,4 @@
-package slqs;
+package com.slqs;
 
 import java.io.BufferedReader;
 import java.io.IOException;

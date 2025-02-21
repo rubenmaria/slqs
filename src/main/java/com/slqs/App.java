@@ -2,10 +2,6 @@ package com.slqs;
 
 import org.json.*;
 
-/**
- * Hello world!
- *
- */
 public class App {
   private final static int PORT = 8080;
 
