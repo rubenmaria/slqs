@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-class Server implements Runnable {
+class Server {
   private ArrayList<Connection> clientConnections;
   private ServerSocket serverSocket;
   private ExecutorService connectionThreadPool;
@@ -18,16 +18,6 @@ class Server implements Runnable {
     clientConnections = new ArrayList<>();
     running = true;
     this.port = port;
-  }
-
-  @Override
-  public void run() {
-    try {
-      listen();
-    } catch (Exception e) {
-      System.out.println("Error: " + e);
-      close();
-    }
   }
 
   public void listen() throws IOException {

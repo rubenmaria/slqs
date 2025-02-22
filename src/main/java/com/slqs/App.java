@@ -1,23 +1,29 @@
 package com.slqs;
 
-import org.json.*;
-
 public class App {
   private final static int PORT = 8080;
+  private final static String DEFAULT_HOST = "localhost";
 
   public static void main(String[] args) {
-    System.out.print("Server host:");
-    final String host = System.console().readLine();
+    System.out.println("server/client?");
+    final boolean isServer = System.console().readLine().contains("server");
 
-    JSONObject jo = new JSONObject("{ \"abc\" : \"def\" }");
-    System.out.println(jo);
-
-    Client client = new Client(host, PORT);
-    Server server = new Server(PORT);
-
-    Thread serverThread = new Thread(server);
-    Thread clientThread = new Thread(client);
-    serverThread.start();
-    clientThread.start();
+    if (isServer) {
+      Server server = new Server(PORT);
+      try {
+        server.listen();
+      } catch (Exception e) {
+        System.out.println(e.getMessage());
+      }
+    } else {
+      Client client = new Client(DEFAULT_HOST, PORT);
+      try {
+        final String PATH = "/home/rubs/workspace/java/slqs/src/main/java/com/slqs/App.java";
+        client.sendFileRequest(PATH);
+        client.handleFileResponse(PATH);
+      } catch (Exception e) {
+        System.out.println(e.getMessage());
+      }
+    }
   }
 }
