@@ -1,33 +1,43 @@
 package com.slqs;
 
+import java.io.File;
 import java.io.BufferedReader;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.util.UUID;
+
 import org.json.JSONObject;
+import org.json.JSONArray;
+import org.json.JSONException;
 
 public class Connection implements Runnable {
   private Socket clientConnection;
   private BufferedReader in;
   private PrintWriter out;
-  private String username;
   private Server server;
+  private UUID currentFileID;
 
   public Connection(Server server, Socket client) {
     this.server = server;
     this.clientConnection = client;
-    System.out.println("Client connected! " + client.getInetAddress());
+    System.out.println(String.format(
+        "Received connection request from \"%s\"", client.getInetAddress()));
   }
 
   @Override
   public void run() {
     try {
       initIO();
-      handleClientMessages();
+      receiveRequest();
+    } catch (JSONException e) {
+      System.out.println("Received invalid message format!");
+      close();
     } catch (Exception e) {
-      out.println("Error occured: " + e + "\n Connection closed!");
-      this.close();
+      System.out.println("Error occured: " + e.getMessage());
+      close();
     }
   }
 
@@ -36,32 +46,77 @@ public class Connection implements Runnable {
     in = new BufferedReader(new InputStreamReader(clientConnection.getInputStream()));
   }
 
-  private void handleClientMessages() throws IOException {
-    String message;
-    while ((message = in.readLine()) != null) {
-      System.out.println(message);
-      try {
-        handleProtocolMessage(new JSONObject(message));
-      } catch (Exception e) {
-        System.out.println(e.getMessage());
-      }
-    }
-  }
-
-  private void handleProtocolMessage(JSONObject protocolMessage) throws Exception {
-    JSONObject data = protocolMessage.getJSONObject(Protocol.DATA);
-    if (protocolMessage.getString(Protocol.COMMAND).compareTo(Protocol.SEND_FILE_COMMAND) == 0) {
-      receiveFile(data.getString(Protocol.FILE_NAME), data.getLong(Protocol.FILE_SIZE));
+  private void receiveRequest() throws Exception {
+    JSONObject protocolMessage = new JSONObject(receiveMessage());
+    JSONObject data = protocolMessage.getJSONObject(Protocol.DATA_KEY);
+    if (Protocol.hasValidCommand(protocolMessage, Protocol.SEND_FILE_COMMAND)) {
+      String fileName = data.getString(Protocol.FILE_NAME_KEY);
+      long fileSize = data.getLong(Protocol.FILE_SIZE_KEY);
+      receiveFile(fileName, fileSize);
     }
   }
 
   private void receiveFile(String fileName, long fileSize) throws Exception {
     printFileRequest(fileName, fileSize);
     if (!isPositiveAnswer()) {
-      sendMessage(Protocol.createRejectResponse().toString());
+      sendRejectResponse();
       return;
     }
-    sendMessage(Protocol.createAcceptResponse().toString());
+    sendAcceptResponse();
+    if (!receiveTransmissionBegin()) {
+      return;
+    }
+    receiveFileData(fileName);
+  }
+
+  private void sendRejectResponse() throws IOException {
+    sendMessage(Protocol.createRejectResponse().toString());
+  }
+
+  private void receiveFileData(String fileName) throws Exception {
+    createNewFile(fileName);
+    byte[] fileData;
+    FileOutputStream out_file = new FileOutputStream(fileName);
+    JSONObject message = new JSONObject(receiveMessage());
+    while (!Protocol.hasValidCommand(message, Protocol.END_TRANSMISSION_COMMAND)) {
+      fileData = decodeFileData(message);
+      out_file.write(fileData, 0, fileData.length);
+      message = new JSONObject(receiveMessage());
+    }
+    out_file.close();
+  }
+
+  private void createNewFile(String fileName) throws IOException {
+    File new_file = new File(fileName);
+    new_file.createNewFile();
+  }
+
+  private byte[] decodeFileData(JSONObject message) {
+    JSONObject data = message.getJSONObject(Protocol.DATA_KEY);
+    JSONArray rawFileData = data.getJSONArray(Protocol.FILE_DATA_KEY);
+    byte[] decodedData = new byte[rawFileData.length()];
+    for (int i = 0; i < rawFileData.length(); i++) {
+      decodedData[i] = (byte) rawFileData.getInt(i);
+    }
+    return decodedData;
+  }
+
+  private boolean receiveTransmissionBegin() throws IOException {
+    JSONObject message = new JSONObject(receiveMessage());
+    if (!Protocol.hasValidCommand(message, Protocol.BEGIN_TRANSMISSION_COMMAND)) {
+      return false;
+    }
+    return Protocol.hasValidFileID(message, currentFileID);
+  }
+
+  private String receiveMessage() throws IOException {
+    return in.readLine();
+  }
+
+  private void sendAcceptResponse() throws Exception {
+    currentFileID = UUID.randomUUID();
+    JSONObject acceptResponse = Protocol.createAcceptResponse(currentFileID);
+    sendMessage(acceptResponse.toString());
   }
 
   private boolean isPositiveAnswer() {
@@ -76,9 +131,9 @@ public class Connection implements Runnable {
 
   public void close() {
     System.out.println(
-        "client: " + username + " ("
+        "Closing connetion to: \""
             + clientConnection.getInetAddress()
-            + ")" + " disconnected!");
+            + "\"");
     try {
       if (!clientConnection.isClosed()) {
         clientConnection.close();

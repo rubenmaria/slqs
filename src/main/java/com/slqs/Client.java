@@ -1,24 +1,26 @@
 package com.slqs;
 
 import java.net.Socket;
-import java.io.*;
-import java.nio.file.*;
+import java.io.BufferedReader;
+import java.io.PrintWriter;
+import java.io.InputStreamReader;
+import java.io.FileInputStream;
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.io.IOException;
+import java.util.UUID;
 
-import org.json.*;
+import org.json.JSONObject;
 
 public class Client {
   private Socket clientSocket;
   private PrintWriter out;
   private BufferedReader in;
-  private boolean running;
-  private String host;
-  private int port;
+  private UUID currentFileID;
 
   public Client(String host, int port) {
-    running = true;
-    this.host = host;
-    this.port = port;
     try {
       connectTo(host, port);
     } catch (Exception e) {
@@ -28,7 +30,9 @@ public class Client {
   }
 
   public void connectTo(String ip, int port) throws IOException {
-    connectToServer(ip, port);
+    clientSocket = new Socket(ip, port);
+    out = new PrintWriter(clientSocket.getOutputStream(), true);
+    in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
   }
 
   public void sendFileRequest(String filePath) throws IOException {
@@ -38,7 +42,12 @@ public class Client {
 
   public boolean wasFileAccepted() throws Exception {
     JSONObject response = new JSONObject(receiveMessage());
-    return response.getString(Protocol.COMMAND).compareTo(Protocol.ACCEPT_COMMAND) == 0;
+    JSONObject data = response.getJSONObject(Protocol.DATA_KEY);
+    if (!Protocol.hasValidCommand(response, Protocol.ACCEPT_COMMAND)) {
+      return false;
+    }
+    currentFileID = UUID.fromString(data.getString(Protocol.UUID_KEY));
+    return true;
   }
 
   public void sendFile(String filePath) throws Exception {
@@ -47,30 +56,37 @@ public class Client {
       System.out.println("Remote host rejected file transmission!");
       return;
     }
+    sendBeginFileTransmission();
     transmitFileData(filePath);
+    sendEndFileTransmission();
+  }
+
+  private void sendBeginFileTransmission() throws IOException {
+    sendMessage(
+        Protocol.createBeginFileTransmission(currentFileID).toString());
+  }
+
+  private void sendEndFileTransmission() throws IOException {
+    sendMessage(Protocol.createEndFileTransmission(currentFileID).toString());
   }
 
   public void transmitFileData(String filePath) throws Exception {
-    char[] bytes = new char[16 * 1024];
-    BufferedReader in = new BufferedReader(new FileReader(filePath));
-    long fileSize = getFileSize(filePath);
+    final long fileSize = getFileSize(filePath);
+    byte[] fileData = new byte[Protocol.PACKAGE_SIZE];
+    FileInputStream in = new FileInputStream(new File(filePath));
     long sent = 0;
     int currentSent;
-    while ((currentSent = in.read(bytes)) > 0) {
+    while ((currentSent = in.read(fileData)) > 0) {
       sent += currentSent;
-      out.write(bytes, 0, currentSent);
-      printUploadProgress(sent, fileSize);
+      sendFileDataPackage(fileData, currentSent);
+      TUI.printProgressBar(sent, fileSize);
     }
     in.close();
   }
 
-  private void printUploadProgress(long sentAmount, long all) {
-    StringBuilder sb = new StringBuilder();
-    final long progressLength = 100;
-    int progress = (int) ((all / sentAmount) * progressLength);
-    sb.append("[");
-    sb.append("#".repeat(progress));
-    sb.append("]");
+  private void sendFileDataPackage(byte[] data, int sentBytes) throws IOException {
+    sendMessage(Protocol.createFileDataPackage(currentFileID, data, sentBytes)
+        .toString());
   }
 
   private String getFileName(String filePath) {
@@ -83,22 +99,8 @@ public class Client {
     return Files.size(path);
   }
 
-  private void connectToServer(String ip, int port) throws IOException {
-    clientSocket = new Socket(ip, port);
-    out = new PrintWriter(clientSocket.getOutputStream(), true);
-    in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-  }
-
   private String receiveMessage() throws IOException {
     return in.readLine();
-  }
-
-  public boolean isRunning() {
-    return running;
-  }
-
-  public void stopRunning() {
-    running = false;
   }
 
   public void sendMessage(String message) throws IOException {
@@ -106,7 +108,6 @@ public class Client {
   }
 
   public void disconnect() {
-    running = false;
     try {
       if (in != null) {
         in.close();

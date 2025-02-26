@@ -5,8 +5,8 @@ public class App {
   private final static String DEFAULT_HOST = "localhost";
 
   public static void main(String[] args) {
-    System.out.println("server/client?");
-    final boolean isServer = System.console().readLine().contains("server");
+    System.out.println("s/c?");
+    final boolean isServer = System.console().readLine().contains("s");
 
     if (isServer) {
       Server server = new Server(PORT);
@@ -18,9 +18,8 @@ public class App {
     } else {
       Client client = new Client(DEFAULT_HOST, PORT);
       try {
-        final String PATH = "/home/rubs/workspace/java/slqs/src/main/java/com/slqs/App.java";
-        client.sendFileRequest(PATH);
-        client.handleFileResponse(PATH);
+        final String PATH = "/home/rubs/Downloads/04-Rekursion.pdf";
+        client.sendFile(PATH);
       } catch (Exception e) {
         System.out.println(e.getMessage());
       }

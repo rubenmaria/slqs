@@ -31,14 +31,6 @@ class Server {
     }
   }
 
-  public void broadcast(String message) {
-    for (Connection connection : clientConnections) {
-      if (connection != null) {
-        connection.sendMessage(message);
-      }
-    }
-  }
-
   public void close() {
     if (serverSocket == null) {
       return;

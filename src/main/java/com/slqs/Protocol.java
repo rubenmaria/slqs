@@ -1,28 +1,63 @@
 package com.slqs;
 
-import org.json.*;
 import java.util.UUID;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
+import org.json.JSONObject;
 
 public class Protocol {
   public static final String SEND_FILE_COMMAND = "sendFile";
   public static final String ACCEPT_COMMAND = "accept";
   public static final String REJECT_COMMAND = "reject";
-  public static final String COMMAND = "command";
-  public static final String DATA = "data";
-  public static final String FILE_NAME = "name";
-  public static final String FILE_SIZE = "size";
+  public static final String BEGIN_TRANSMISSION_COMMAND = "beginTransmission";
+  public static final String END_TRANSMISSION_COMMAND = "endTransmission";
+  public static final String FILE_DATA_PACKAGE_COMMAND = "fileDataPackagae";
+
+  public static final String COMMAND_KEY = "command";
+  public static final String DATA_KEY = "data";
+  public static final String FILE_NAME_KEY = "name";
+  public static final String FILE_SIZE_KEY = "size";
   public static final String UUID_KEY = "uuid";
+  public static final String FILE_DATA_KEY = "fileData";
+
+  public static final int PACKAGE_SIZE = 1024;
+
+  public static JSONObject createBeginFileTransmission(UUID fileID) {
+    JSONObject uuid = new JSONObject()
+        .put(UUID_KEY, fileID.toString());
+    return basicFormat(BEGIN_TRANSMISSION_COMMAND, uuid);
+  }
+
+  public static JSONObject createEndFileTransmission(UUID fileID) {
+    JSONObject uuid = new JSONObject()
+        .put(UUID_KEY, fileID.toString());
+    return basicFormat(END_TRANSMISSION_COMMAND, uuid);
+  }
+
+  public static JSONObject createFileDataPackage(UUID fileID, byte[] fileData, int sentBytes) {
+    List<Integer> encodedFileData = IntStream.range(0, sentBytes)
+        .map((i) -> fileData[i])
+        .boxed()
+        .collect(Collectors.toList());
+
+    JSONObject data = new JSONObject()
+        .put(UUID_KEY, fileID.toString())
+        .put(FILE_DATA_KEY, encodedFileData);
+    return basicFormat(FILE_DATA_PACKAGE_COMMAND, data);
+  }
 
   public static JSONObject createSendFileRequest(String fileName, long fileSize) {
     JSONObject data = new JSONObject()
-        .put(FILE_NAME, fileName)
-        .put(FILE_SIZE, fileSize);
+        .put(FILE_NAME_KEY, fileName)
+        .put(FILE_SIZE_KEY, fileSize);
     return basicFormat(SEND_FILE_COMMAND, data);
   }
 
-  public static JSONObject createAcceptResponse() {
+  public static JSONObject createAcceptResponse(UUID newFileID) {
     JSONObject uuid = new JSONObject()
-        .put(UUID_KEY, UUID.randomUUID());
+        .put(UUID_KEY, newFileID.toString());
     return basicFormat(ACCEPT_COMMAND, uuid);
   }
 
@@ -32,7 +67,16 @@ public class Protocol {
 
   private static JSONObject basicFormat(String command, JSONObject data) {
     return new JSONObject()
-        .put(COMMAND, command)
-        .put(DATA, data);
+        .put(COMMAND_KEY, command)
+        .put(DATA_KEY, data);
+  }
+
+  public static boolean hasValidCommand(JSONObject message, String command) {
+    return message.getString(Protocol.COMMAND_KEY).compareTo(command) == 0;
+  }
+
+  public static boolean hasValidFileID(JSONObject message, UUID fileID) {
+    JSONObject data = message.getJSONObject(DATA_KEY);
+    return UUID.fromString(data.getString(UUID_KEY)).compareTo(fileID) == 0;
   }
 }
