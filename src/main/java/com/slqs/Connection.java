@@ -19,6 +19,8 @@ public class Connection implements Runnable {
   private PrintWriter out;
   private Server server;
   private UUID currentFileID;
+  private long currentFileSize;
+  private String currentFilePath;
 
   public Connection(Server server, Socket client) {
     this.server = server;
@@ -50,14 +52,14 @@ public class Connection implements Runnable {
     JSONObject protocolMessage = new JSONObject(receiveMessage());
     JSONObject data = protocolMessage.getJSONObject(Protocol.DATA_KEY);
     if (Protocol.hasValidCommand(protocolMessage, Protocol.SEND_FILE_COMMAND)) {
-      String fileName = data.getString(Protocol.FILE_NAME_KEY);
-      long fileSize = data.getLong(Protocol.FILE_SIZE_KEY);
-      receiveFile(fileName, fileSize);
+      currentFilePath = data.getString(Protocol.NAME_KEY);
+      currentFileSize = data.getLong(Protocol.SIZE_KEY);
+      receiveFile();
     }
   }
 
-  private void receiveFile(String fileName, long fileSize) throws Exception {
-    printFileRequest(fileName, fileSize);
+  private void receiveFile() throws Exception {
+    printFileRequest();
     if (!isPositiveAnswer()) {
       sendRejectResponse();
       return;
@@ -66,28 +68,32 @@ public class Connection implements Runnable {
     if (!receiveTransmissionBegin()) {
       return;
     }
-    receiveFileData(fileName);
+    receiveFileData();
+    TUI.printFileReceived(currentFilePath);
   }
 
   private void sendRejectResponse() throws IOException {
     sendMessage(Protocol.createRejectResponse().toString());
   }
 
-  private void receiveFileData(String fileName) throws Exception {
-    createNewFile(fileName);
+  private void receiveFileData() throws Exception {
+    createNewFile();
     byte[] fileData;
-    FileOutputStream out_file = new FileOutputStream(fileName);
+    FileOutputStream out_file = new FileOutputStream(currentFilePath);
     JSONObject message = new JSONObject(receiveMessage());
+    long totalReceived = 0;
     while (!Protocol.hasValidCommand(message, Protocol.END_TRANSMISSION_COMMAND)) {
       fileData = decodeFileData(message);
       out_file.write(fileData, 0, fileData.length);
       message = new JSONObject(receiveMessage());
+      totalReceived += fileData.length;
+      TUI.printProgressBar(totalReceived, currentFileSize);
     }
     out_file.close();
   }
 
-  private void createNewFile(String fileName) throws IOException {
-    File new_file = new File(fileName);
+  private void createNewFile() throws IOException {
+    File new_file = new File(currentFilePath);
     new_file.createNewFile();
   }
 
@@ -123,10 +129,10 @@ public class Connection implements Runnable {
     return System.console().readLine().compareToIgnoreCase("y") == 0;
   }
 
-  private void printFileRequest(String fileName, long fileSize) {
+  private void printFileRequest() {
     System.out.println(String.format(
         "Do you want to recieve the File \"%s\" with size %.4f KB from \"%s\"? [Y/n]",
-        fileName, fileSize / 10e3, clientConnection.getInetAddress()));
+        currentFilePath, currentFileSize / 10e3, clientConnection.getInetAddress()));
   }
 
   public void close() {

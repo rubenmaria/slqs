@@ -8,21 +8,51 @@ import java.util.stream.IntStream;
 import org.json.JSONObject;
 
 public class Protocol {
-  public static final String SEND_FILE_COMMAND = "sendFile";
   public static final String ACCEPT_COMMAND = "accept";
   public static final String REJECT_COMMAND = "reject";
+  public static final String SEND_FILE_COMMAND = "sendFile";
   public static final String BEGIN_TRANSMISSION_COMMAND = "beginTransmission";
   public static final String END_TRANSMISSION_COMMAND = "endTransmission";
   public static final String FILE_DATA_PACKAGE_COMMAND = "fileDataPackagae";
+  public static final String SEND_DIRECTORY_COMMAND = "sendDir";
+  public static final String BEGIN_DIRECTORY_COMMAND = "beginTransmissionDir";
+  public static final String END_DIRECTORY_COMMAND = "endTransmissionDir";
 
   public static final String COMMAND_KEY = "command";
   public static final String DATA_KEY = "data";
-  public static final String FILE_NAME_KEY = "name";
-  public static final String FILE_SIZE_KEY = "size";
+  public static final String NAME_KEY = "name";
+  public static final String SIZE_KEY = "size";
+  public static final String FORCE_KEY = "force";
   public static final String UUID_KEY = "uuid";
   public static final String FILE_DATA_KEY = "fileData";
+  public static final String SAFE_PATH = "safePath";
 
   public static final int PACKAGE_SIZE = 1024;
+
+  public static JSONObject createSendDirectoryRequest(
+      String directory,
+      String safePath,
+      long size,
+      boolean force) {
+    JSONObject data = new JSONObject()
+        .put(NAME_KEY, directory)
+        .put(SAFE_PATH, safePath)
+        .put(SIZE_KEY, size)
+        .put(FORCE_KEY, force);
+    return basicFormat(SEND_DIRECTORY_COMMAND, data);
+  }
+
+  public static JSONObject createBeginDirectoryTransmission(UUID directoryID) {
+    JSONObject uuid = new JSONObject()
+        .put(UUID_KEY, directoryID.toString());
+    return basicFormat(BEGIN_DIRECTORY_COMMAND, uuid);
+  }
+
+  public static JSONObject createEndDirectoryTransmission(UUID directoryID) {
+    JSONObject uuid = new JSONObject()
+        .put(UUID_KEY, directoryID.toString());
+    return basicFormat(END_TRANSMISSION_COMMAND, uuid);
+  }
 
   public static JSONObject createBeginFileTransmission(UUID fileID) {
     JSONObject uuid = new JSONObject()
@@ -50,8 +80,8 @@ public class Protocol {
 
   public static JSONObject createSendFileRequest(String fileName, long fileSize) {
     JSONObject data = new JSONObject()
-        .put(FILE_NAME_KEY, fileName)
-        .put(FILE_SIZE_KEY, fileSize);
+        .put(NAME_KEY, fileName)
+        .put(SIZE_KEY, fileSize);
     return basicFormat(SEND_FILE_COMMAND, data);
   }
 
