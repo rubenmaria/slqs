@@ -1,6 +1,7 @@
 package com.slqs;
 
 import java.net.Socket;
+import java.awt.print.PrinterJob;
 import java.io.BufferedReader;
 import java.io.PrintWriter;
 import java.io.InputStreamReader;
@@ -9,14 +10,13 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.LinkOption;
 import java.io.IOException;
 import java.util.UUID;
 import java.util.List;
 
 import org.json.JSONObject;
 
-public class Client {
+public class Sender {
   private Socket clientSocket;
   private PrintWriter out;
   private BufferedReader in;
@@ -33,7 +33,8 @@ public class Client {
 
   public void sendFileRequest() throws IOException {
     JSONObject request = Protocol.createSendFileRequest(
-        getFileName(currentFilePath), getFileSize(currentFilePath));
+        FileSystem.getRootName(currentFilePath),
+        FileSystem.getFileSize(currentFilePath));
     sendMessage(request.toString());
   }
 
@@ -47,11 +48,15 @@ public class Client {
     return true;
   }
 
-  public void sendDirectory(String path, String safePath, boolean force) throws Exception{
+  public void sendDirectory(String path, boolean force) throws Exception {
     currentDirectoryPath = path;
-    sendDirectoryRequest(safePath, force);
-    if(!wasDiretoryAccepted()) {
-      System.out.println("Remote host rejected directory transmission!");
+    if (!FileSystem.isValidDirectoryPath(path)) {
+      TUI.printInvalidDirectory();
+      return;
+    }
+    sendDirectoryRequest(force);
+    if (!wasDiretoryAccepted()) {
+      TUI.printRejection();
       return;
     }
     sendBeginDirectoryTransmission();
@@ -59,64 +64,63 @@ public class Client {
     sendEndDirectoryTransmission();
   }
 
-  private void sendDirectoryRequest(String safePath, boolean force) throws IOException{
+  private void sendDirectoryRequest(boolean force) throws IOException {
     sendMessage(Protocol.createSendDirectoryRequest(
-      currentDirectoryPath, safePath, getDirectorySize(), force).toString());
+        FileSystem.getRootName(currentDirectoryPath),
+        FileSystem.getDirectorySize(currentDirectoryPath), force)
+        .toString());
   }
 
-  private long getDirectorySize() throws IOException {
-    List<String> paths = Files.walk(Paths.get(currentDirectoryPath))
-      .map((x) -> x.toString())
-      .toList();
-    long size = 0;
-    for(String filePath : paths) {
-      if(!isDirectory(filePath)) {
-        size += getFileSize(filePath);
-      }
+  private boolean wasDiretoryAccepted() throws IOException {
+    JSONObject message = new JSONObject(receiveMessage());
+    JSONObject data = message.getJSONObject(Protocol.DATA_KEY);
+    if (!Protocol.hasValidCommand(message, Protocol.ACCEPT_COMMAND)) {
+      return false;
     }
-    return size;
+    currentDirectoryID = UUID.fromString(data.getString(Protocol.UUID_KEY));
+    return true;
   }
 
-  private boolean wasDiretoryAccepted() {
-    return false;
-  }
-
-  private void sendBeginDirectoryTransmission() throws IOException{
-    currentDirectoryID = UUID.randomUUID();
-    sendMessage(Protocol.
-        createBeginDirectoryTransmission(currentDirectoryID).toString());
+  private void sendBeginDirectoryTransmission() throws IOException {
+    sendMessage(Protocol.createBeginDirectoryTransmission(currentDirectoryID).toString());
   }
 
   private void sendDirectoryFiles() throws Exception {
-    List<String> paths = Files.walk(Paths.get(currentDirectoryPath))
-      .map((x) -> x.toString())
-      .toList();
-    for(String filePath : paths) {
-      if(!isDirectory(filePath)) {
-        sendFile(filePath);
-      }
+    List<String> files = Files.walk(Paths.get(currentDirectoryPath))
+        .map((x) -> x.toString())
+        .filter((x) -> !FileSystem.isDirectory(x))
+        .toList();
+    for (String path : files) {
+      sendDirectoryFile(path);
     }
   }
 
-  private void sendEndDirectoryTransmission() throws IOException{
-    sendMessage(Protocol.
-        createEndDirectoryTransmission(currentDirectoryID).toString());
+  private void sendDirectoryFile(String filePath) throws Exception {
+    currentFilePath = filePath;
+    sendFileRequest();
+    if (!wasFileAccepted()) {
+      TUI.printRejection();
+      return;
+    }
+    sendBeginFileTransmission();
+    transmitFileData();
+    sendEndFileTransmission();
+    TUI.printFileSent(getFileName());
   }
 
-  private boolean isDirectory(String path) {
-    File dir = new File(path);
-    return dir.isDirectory();
+  private void sendEndDirectoryTransmission() throws IOException {
+    sendMessage(Protocol.createEndDirectoryTransmission(currentDirectoryID).toString());
   }
 
   public void sendFile(String filePath) throws Exception {
     currentFilePath = filePath;
-    if(!isValidFilePath()) {
-      System.out.println("Invalid file path: Make sure the file path exists!");
+    if (!FileSystem.isValidFilePath(filePath)) {
+      TUI.printInvalidPath();
       return;
     }
     sendFileRequest();
     if (!wasFileAccepted()) {
-      System.out.println("Remote host rejected file transmission!");
+      TUI.printRejection();
       return;
     }
     sendBeginFileTransmission();
@@ -140,7 +144,7 @@ public class Client {
   }
 
   public void transmitFileData() throws Exception {
-    final long fileSize = getFileSize(currentFilePath);
+    final long fileSize = FileSystem.getFileSize(currentFilePath);
     byte[] fileData = new byte[Protocol.PACKAGE_SIZE];
     FileInputStream in = new FileInputStream(new File(currentFilePath));
     long sent = 0;
@@ -156,21 +160,6 @@ public class Client {
   private void sendFileDataPackage(byte[] data, int sentBytes) throws IOException {
     sendMessage(Protocol.createFileDataPackage(currentFileID, data, sentBytes)
         .toString());
-  }
-
-  private boolean isValidFilePath() {
-    Path path = Paths.get(currentFilePath);
-    return Files.exists(path, LinkOption.NOFOLLOW_LINKS);
-  }
-
-  private String getFileName(String filePath) {
-    Path path = Paths.get(filePath);
-    return path.getFileName().toString();
-  }
-
-  private long getFileSize(String filePath) throws IOException {
-    Path path = Paths.get(filePath);
-    return Files.size(path);
   }
 
   private String receiveMessage() throws IOException {
@@ -193,7 +182,7 @@ public class Client {
         clientSocket.close();
       }
     } catch (Exception e) {
-      System.out.println("Error occured disconnecting: " + e);
+      TUI.printError(e);
     }
   }
 }
