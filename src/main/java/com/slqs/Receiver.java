@@ -6,7 +6,9 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.net.SocketException;
 import java.util.UUID;
+import java.net.ProtocolException;
 import java.net.ServerSocket;
 
 import org.json.JSONObject;
@@ -25,26 +27,14 @@ public class Receiver {
   private boolean currentForceFlag;
   private String currentSafePath;
 
-  public void receive(int port) {
-    try {
-      listen(port);
-    } catch (JSONException e) {
-      TUI.printProtocolError(e);
-      close();
-    } catch (Exception e) {
-      TUI.printError(e);
-      close();
-    }
-  }
-
-  private void listen(int port) throws Exception {
+  public void receive(int port) throws Exception {
     serverSocket = new ServerSocket(port);
     do {
+      TUI.printWaitingForConnection();
       clientConnection = serverSocket.accept();
       initIO();
       receiveRequest();
     } while (TUI.promptContiue());
-    close();
   }
 
   private void initIO() throws IOException {
@@ -74,11 +64,10 @@ public class Receiver {
       sendRejectResponse();
       return;
     }
-    currentSafePath = FileSystem.joinPaths(TUI.promptSafePath(), directoryName);
+    currentSafePath = TUI.promptSafePath();
     sendAcceptResponse();
     if (!receiveTransmissionBegin()) {
-      TUI.printInvalidComannd();
-      return;
+      throw new ProtocolException("Expected transmission begin!");
     }
     receiveDirectoryFiles();
     TUI.printDirectoryReceived(directoryName);
@@ -106,8 +95,7 @@ public class Receiver {
     }
     sendAcceptResponse();
     if (!receiveTransmissionBegin()) {
-      TUI.printInvalidComannd();
-      return;
+      throw new ProtocolException("Expected transmission begin!");
     }
     receiveFileData();
     TUI.printFileReceived(currentFileName);
@@ -133,8 +121,7 @@ public class Receiver {
     currentSafePath = TUI.promptSafePath();
     sendAcceptResponse();
     if (!receiveTransmissionBegin()) {
-      TUI.printInvalidComannd();
-      return;
+      throw new ProtocolException("Expected transmission begin!");
     }
     receiveFileData();
     TUI.printFileReceived(currentFileName);
@@ -185,7 +172,11 @@ public class Receiver {
   }
 
   private String receiveMessage() throws IOException {
-    return in.readLine();
+    String raw = in.readLine();
+    if (raw == null) {
+      throw new SocketException("Remote host closed connection!");
+    }
+    return raw;
   }
 
   private void sendAcceptResponse() throws Exception {

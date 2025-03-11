@@ -1,150 +1,112 @@
 package com.slqs;
 
-import org.json.JSONException;
+import java.util.Hashtable;
 
 public class TUI {
   private final static int progressBarLength = 50;
 
   public static void printHelp() {
     System.out.println(
-        "slqs [Command]\n" +
+        "Usage:\n" +
+            "slqs [Command]\n" +
             "Commands:\n" +
-            "\t send\n [Flag] [Paramter]" +
-            "\t receive [Optional]\n" +
-            "\t help\n" +
+            " send [Flag] [Paramter]\t" +
+            "sends a file or directory\n" +
+            " receive [Optional]\t" +
+            "receives a file or directory\n" +
+            " help\t\t\t" + "displays help \n" +
             "Paramter:\n" +
-            "\t --host, -h [HOST]\n" +
-            "\t --path, -p [PATH]\n" +
+            " --host, -h [HOST]" +
+            "\tlocal adress of the receiver\n" +
+            " --path, -p [PATH]" +
+            "\tpath to object you want to share\n" +
             "Flags: \n" +
-            "\t --force, -f\n" +
-            "\t --recursive, -r\n" +
+            " --force, -f" + "\t\tremoves receiving prompt\n" +
+            " --recursive, -r" + "\trecursively send a directory\n" +
             "Optional:\n" +
-            "\t --port [PORT]\n");
+            " --port [PORT]" + "\t\tcommunication port\n");
   }
 
-  public static void printProtocolError(JSONException e) {
-    System.out.println("Invalid protocol message received: " + e.getMessage());
+  public static Hashtable<String, Object> parseArguments(String[] args) throws Exception {
+    Hashtable<String, Object> arguments = parse(args);
+    hasRequiredArguments(arguments);
+    isValidPort(arguments);
+    return arguments;
+  }
+
+  public static void isValidPort(Hashtable<String, Object> args) throws Exception {
+    if (args.containsKey("port") && ((Integer) args.get("port")).intValue() < 0) {
+      throw new RuntimeException("Port has to be a positve integer!");
+    }
+  }
+
+  public static void hasRequiredArguments(Hashtable<String, Object> args) throws Exception {
+    if (args.containsKey("send") && (!args.containsKey("path") || !args.containsKey("host"))) {
+      throw new RuntimeException("Path and host are required arguments!");
+    }
+  }
+
+  public static Hashtable<String, Object> parse(String[] args) throws Exception {
+    Hashtable<String, Object> arguments = new Hashtable<String, Object>();
+    for (int i = 0; i < args.length; i++) {
+      switch (args[i]) {
+        case "send":
+          arguments.put("send", Boolean.valueOf(true));
+          break;
+        case "receive":
+          arguments.put("receive", Boolean.valueOf(true));
+          break;
+        case "help":
+          arguments.put("help", Boolean.valueOf(true));
+          break;
+        case "-rf":
+          arguments.put("force", Boolean.valueOf(true));
+          arguments.put("recursive", Boolean.valueOf(true));
+          break;
+        case "--force":
+        case "-f":
+          arguments.put("force", Boolean.valueOf(true));
+          break;
+        case "--recursive":
+        case "-r":
+          arguments.put("recursive", Boolean.valueOf(true));
+          break;
+        case "--port":
+          if (args.length > i + 1) {
+            arguments.put("port", Integer.valueOf(args[i + 1]));
+          }
+          break;
+        case "--host":
+        case "-h":
+          if (args.length > i + 1) {
+            arguments.put("host", args[i + 1]);
+          }
+          break;
+        case "--path":
+        case "-p":
+          if (args.length > i + 1) {
+            arguments.put("path", args[i + 1]);
+          }
+          break;
+      }
+    }
+    return arguments;
   }
 
   public static void printRejection() {
     System.out.println("Remote host rejected transmission!");
   }
 
-  public static void printInvalidDirectory() {
-    System.out.println("Invalid directory path: Make sure the directory exists!");
-  }
-
   public static void printError(Exception e) {
-    System.out.println("Something went wrong: " + e.getMessage());
+    System.out.println("Error occurred:\n" +
+        " Type: " + e.getClass().getSimpleName() + "\n" +
+        " Message: " + e.getMessage() + "\n" +
+        " Stack Trace:");
+    e.printStackTrace();
   }
 
-  public static void printInvalidPath() {
-    System.out.println("Given path is Invalid!");
-    printHelp();
-  }
-
-  public static void printInvalidHost() {
-    System.out.println("Given host is invalid!");
-    printHelp();
-  }
-
-  public static void printMissingPath() {
-    System.out.println("No path were given!");
-    printHelp();
-  }
-
-  public static void printMissingHost() {
-    System.out.println("No host were given!");
-    printHelp();
-  }
-
-  public static void printInvalidPort() {
-    System.out.println("Given port is invalid!");
-    printHelp();
-  }
-
-  public static boolean hasHost(String[] args) {
-    return hasOption(args, "-h", "--host");
-  }
-
-  public static boolean hasPath(String[] args) {
-    return hasOption(args, "-p", "--path");
-  }
-
-  public static boolean hasPort(String[] args) {
-    return hasOption(args, "--port");
-  }
-
-  public static Integer parsePort(String[] args) {
-    String port = getStringAfter(args, "--port");
-    if (port == null) {
-      return null;
-    }
-    if (port.chars().allMatch(Character::isDigit)) {
-      return Integer.valueOf(port);
-    }
-    return null;
-  }
-
-  public static String parseHost(String[] args) {
-    return getStringAfter(args, "--host", "-h");
-  }
-
-  public static String parsePath(String[] args) {
-    return getStringAfter(args, "--path", "-p");
-  }
-
-  private static String getStringAfter(String[] args, String... options) {
-    int parameterValueIndex;
-    boolean indexFound = false;
-    for (int i = 0; i < args.length; i++) {
-      for (String option : options) {
-        if (args[i].compareTo(option) == 0) {
-          indexFound = true;
-          break;
-        }
-      }
-      if (!indexFound) {
-        continue;
-      }
-      parameterValueIndex = i + 1;
-      if (parameterValueIndex >= args.length) {
-        return null;
-      }
-      return args[parameterValueIndex];
-    }
-    return null;
-  }
-
-  public static boolean isForceSet(String[] args) {
-    return hasOption(args, "-f", "--force");
-  }
-
-  public static boolean isRecursiveSet(String[] args) {
-    return hasOption(args, "-r", "--recursive");
-  }
-
-  private static boolean hasOption(String[] args, String... options) {
-    for (String arg : args) {
-      for (String option : options) {
-        if (arg.compareTo(option) == 0) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  public static boolean isSendCommand(String[] args) {
-    return args[1].compareTo("send") == 0;
-  }
-
-  public static boolean isHelpCommand(String[] args) {
-    return args[1].compareTo("help") == 0;
-  }
-
-  public static boolean isReceiveCommand(String[] args) {
-    return args[1].compareTo("receive") == 0;
+  public static void printWaitingForConnection() {
+    System.out.println("Waiting for requests...");
   }
 
   public static void printProgressBar(double current, double total) {

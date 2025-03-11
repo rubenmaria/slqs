@@ -1,14 +1,13 @@
 package com.slqs;
 
 import java.net.Socket;
-import java.awt.print.PrinterJob;
+import java.net.SocketException;
 import java.io.BufferedReader;
 import java.io.PrintWriter;
 import java.io.InputStreamReader;
 import java.io.FileInputStream;
 import java.io.File;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.io.IOException;
 import java.util.UUID;
@@ -33,7 +32,14 @@ public class Sender {
 
   public void sendFileRequest() throws IOException {
     JSONObject request = Protocol.createSendFileRequest(
-        FileSystem.getRootName(currentFilePath),
+        FileSystem.getLeafName(currentFilePath),
+        FileSystem.getFileSize(currentFilePath));
+    sendMessage(request.toString());
+  }
+
+  public void sendDirectoryFileRequest() throws IOException {
+    JSONObject request = Protocol.createSendFileRequest(
+        FileSystem.getRelativePath(currentFilePath, currentDirectoryPath),
         FileSystem.getFileSize(currentFilePath));
     sendMessage(request.toString());
   }
@@ -50,10 +56,6 @@ public class Sender {
 
   public void sendDirectory(String path, boolean force) throws Exception {
     currentDirectoryPath = path;
-    if (!FileSystem.isValidDirectoryPath(path)) {
-      TUI.printInvalidDirectory();
-      return;
-    }
     sendDirectoryRequest(force);
     if (!wasDiretoryAccepted()) {
       TUI.printRejection();
@@ -66,7 +68,7 @@ public class Sender {
 
   private void sendDirectoryRequest(boolean force) throws IOException {
     sendMessage(Protocol.createSendDirectoryRequest(
-        FileSystem.getRootName(currentDirectoryPath),
+        FileSystem.getLeafName(currentDirectoryPath),
         FileSystem.getDirectorySize(currentDirectoryPath), force)
         .toString());
   }
@@ -97,7 +99,7 @@ public class Sender {
 
   private void sendDirectoryFile(String filePath) throws Exception {
     currentFilePath = filePath;
-    sendFileRequest();
+    sendDirectoryFileRequest();
     if (!wasFileAccepted()) {
       TUI.printRejection();
       return;
@@ -105,7 +107,8 @@ public class Sender {
     sendBeginFileTransmission();
     transmitFileData();
     sendEndFileTransmission();
-    TUI.printFileSent(getFileName());
+    TUI.printFileSent(FileSystem.getRelativePath(
+        currentFilePath, currentDirectoryPath));
   }
 
   private void sendEndDirectoryTransmission() throws IOException {
@@ -114,10 +117,6 @@ public class Sender {
 
   public void sendFile(String filePath) throws Exception {
     currentFilePath = filePath;
-    if (!FileSystem.isValidFilePath(filePath)) {
-      TUI.printInvalidPath();
-      return;
-    }
     sendFileRequest();
     if (!wasFileAccepted()) {
       TUI.printRejection();
@@ -126,12 +125,7 @@ public class Sender {
     sendBeginFileTransmission();
     transmitFileData();
     sendEndFileTransmission();
-    TUI.printFileSent(getFileName());
-  }
-
-  private String getFileName() {
-    Path path = Paths.get(currentFilePath);
-    return path.getFileName().toString();
+    TUI.printFileSent(FileSystem.getLeafName(currentFilePath));
   }
 
   private void sendBeginFileTransmission() throws IOException {
@@ -163,7 +157,11 @@ public class Sender {
   }
 
   private String receiveMessage() throws IOException {
-    return in.readLine();
+    String raw = in.readLine();
+    if (raw == null) {
+      throw new SocketException("Remote host has closed the connection!");
+    }
+    return raw;
   }
 
   public void sendMessage(String message) throws IOException {
