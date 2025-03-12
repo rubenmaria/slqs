@@ -100,9 +100,7 @@ public class TUI {
   public static void printError(Exception e) {
     System.out.println("Error occurred:\n" +
         " Type: " + e.getClass().getSimpleName() + "\n" +
-        " Message: " + e.getMessage() + "\n" +
-        " Stack Trace:");
-    e.printStackTrace();
+        " Message: " + e.getMessage());
   }
 
   public static void printWaitingForConnection() {
